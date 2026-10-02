@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Integration Hub – TMS prototype (v46)</title>
+<title>Integration Hub – TMS prototype (v48)</title>
 <style>html,body{margin:0;padding:0;} *{box-sizing:border-box;} button,input,select,textarea{font-family:inherit;}</style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
@@ -162,7 +162,8 @@ function ConfirmModal({ open, title, body, note, confirmLabel, onConfirm, onCanc
                 React.createElement(PrimaryBtn, { onClick: onConfirm, style: danger ? { background: "#DC2626" } : undefined }, confirmLabel)))));
 }
 /* New Integration Request modal ("Can't find your TMS?") */
-function NewIntegrationRequestModal({ open, onClose, onSelectExisting, initialName = "", initialType = "", onSubmitted, title = "New integration request", askReason = true, successTitle = "Integration request submitted", successMessage = (name) => `We've received your request to integrate with ${name}.`, }) {
+function NewIntegrationRequestModal({ open, onClose, onSelectExisting, initialName = "", initialType = "", onSubmitted, title = "New integration request", askReason = true, successTitle = "Integration request submitted", successMessage = (name) => `We've received your request to integrate with ${name}.`, submitLabel = "Raise ticket", onDirectSubmit, // when set, submitting saves straight away (no ticket, no success screen)
+ }) {
     const [submitted, setSubmitted] = useState(false);
     const [providerName, setProviderName] = useState("");
     const [website, setWebsite] = useState("");
@@ -250,7 +251,14 @@ function NewIntegrationRequestModal({ open, onClose, onSelectExisting, initialNa
                 !askReason && React.createElement("div", { style: { height: 4 } }),
                 React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8 } },
                     React.createElement(GhostBtn, { onClick: () => { onClose(); reset(); } }, "Cancel"),
-                    React.createElement(PrimaryBtn, { disabled: !canSubmit, onClick: () => setSubmitted(true) }, "Raise ticket")))))));
+                    React.createElement(PrimaryBtn, { disabled: !canSubmit, onClick: () => {
+                            if (onDirectSubmit) {
+                                onDirectSubmit(providerName.trim(), integrationType);
+                                reset();
+                                return;
+                            }
+                            setSubmitted(true);
+                        } }, submitLabel)))))));
 }
 /* Switch TMS provider — one step: pick the new provider and send them a key (the current key stops working) */
 function SwitchProviderModal({ open, currentProvider, initialPick, onCancel, onConfirm, onNotListed }) {
@@ -309,10 +317,10 @@ function KeyPanel({ apiKey }) {
             React.createElement(GhostBtn, { icon: copied ? React.createElement(Check, { size: 13 }) : React.createElement(Copy, { size: 13 }), onClick: copy }, copied ? "Copied" : "Copy"))));
 }
 /* Two flows: new integration request vs. already integrated with a TMS partner */
-function FlowToggle({ flow, onChange, awaitingLive, onGoLive, bespokeApproved, onBespokeChange }) {
+function FlowToggle({ flow, onChange, awaitingLive, onGoLive }) {
     const options = [
-        { id: "new", label: "New TMS integration request" },
-        { id: "integrated", label: "Already integrated with a TMS partner" },
+        { id: "new", label: "No API key detected" },
+        { id: "integrated", label: "API key detected" },
     ];
     return (React.createElement("div", { style: { border: "1px dashed #D1D5DB", borderRadius: 8, padding: "10px 12px", marginBottom: 24, width: "fit-content" } },
         React.createElement("div", { style: { fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#9CA3AF", marginBottom: 8 } }, "Prototype only \u2014 not part of the product"),
@@ -330,15 +338,15 @@ function FlowToggle({ flow, onChange, awaitingLive, onGoLive, bespokeApproved, o
                     boxShadow: active ? "0 1px 2px rgba(16,24,40,0.12)" : "none",
                 } }, o.label));
         })),
-        flow === "integrated" && (React.createElement("div", { style: { marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
-            React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "#6B7280" } }, "API key scenario:"),
-            React.createElement("div", { style: { display: "inline-flex", background: "#F3F4F6", borderRadius: 8, padding: 3 } }, [
-                { id: true, label: "API key detected" },
-                { id: false, label: "No API key detected" },
-            ].map((o) => {
-                const active = bespokeApproved === o.id;
-                return (React.createElement("button", { key: String(o.id), onClick: () => onBespokeChange(o.id), style: { border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: active ? "#fff" : "transparent", color: active ? "#1F2937" : "#6B7280", boxShadow: active ? "0 1px 2px rgba(16,24,40,0.12)" : "none" } }, o.label));
-            })))),
+        React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "#6B7280", lineHeight: 1.5 } }, flow === "new"
+            ? React.createElement(React.Fragment, null,
+                "No API key on the member's account \u2192 they land on ",
+                React.createElement("strong", null, "Integrate your TMS"),
+                " (new integration).")
+            : React.createElement(React.Fragment, null,
+                "API key on the member's account \u2192 they land on ",
+                React.createElement("strong", null, "Confirm your TMS provider"),
+                " (already integrated).")),
         awaitingLive && (React.createElement("div", { style: { marginTop: 8 } },
             React.createElement("button", { onClick: onGoLive, style: { background: "none", border: "none", padding: 0, color: "#2563EB", fontSize: 12, fontWeight: 600, cursor: "pointer" } }, "Simulate load posted (integration goes live)")))));
 }
@@ -387,17 +395,9 @@ function IntegrationHubPrototype() {
     const [switchInitialPick, setSwitchInitialPick] = useState("");
     const [switchRequestOpen, setSwitchRequestOpen] = useState(false);
     const [apiKey, setApiKey] = useState("");
-    const [bespokeApproved, setBespokeApproved] = useState(true); // prototype scenario
-    const [approvalRequestOpen, setApprovalRequestOpen] = useState(false);
     const [lastResentAt, setLastResentAt] = useState(null);
     const providerKnown = selectedProvider !== UNKNOWN_PROVIDER;
     const bespoke = isBespoke(selectedProvider);
-    /* Blocker: a bespoke integration can't go live until the member has generated a key */
-    /* No API key detected (already-integrated flow only, bespoke or third-party): never issue a key without approval.
-       In the new flow a bespoke TMS only appears for members approved for it, so it always goes to Generate. */
-    const notApproved = providerKnown && !bespokeApproved && flow === "integrated";
-    const providerShortName = selectedProvider.replace(" (Bespoke)", "");
-    const needsKey = providerKnown && bespoke && !apiKey && !notApproved;
     function resetResend() {
         setLastResentAt(null);
     }
@@ -408,18 +408,6 @@ function IntegrationHubPrototype() {
             setLastResentAt(new Date());
             setLive(false);
         }
-    }
-    /* Bespoke goes straight to the integration page (no email, no request); listed providers confirm first */
-    function startConnect(provider) {
-        if (isBespoke(provider)) {
-            setLive(false);
-            resetResend();
-            setSelectedProvider(provider);
-            setApiKey("");
-            setConnected(true);
-            return;
-        }
-        setConnectConfirmProvider(provider);
     }
     function handleConfirmConnect() {
         setLive(false);
@@ -516,7 +504,7 @@ function IntegrationHubPrototype() {
                         t,
                         t === "TMS" && (React.createElement("span", { style: { marginLeft: 8, fontSize: 9.5, fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "2px 6px", borderRadius: 999, verticalAlign: 2 } }, "NEW"))));
                 })),
-                activeTab === "tms" && React.createElement(FlowToggle, { flow: flow, onChange: handleFlowChange, awaitingLive: connected && !live && !!apiKey && !notApproved, onGoLive: () => setLive(true), bespokeApproved: bespokeApproved, onBespokeChange: setBespokeApproved }),
+                activeTab === "tms" && React.createElement(FlowToggle, { flow: flow, onChange: handleFlowChange, awaitingLive: connected && !live && !!apiKey, onGoLive: () => setLive(true) }),
                 activeTab !== "tms" ? (React.createElement("div", { style: { color: "#9CA3AF", fontSize: 13.5, padding: "60px 0", textAlign: "center" } },
                     activeTab === "accounts-payable" ? "Accounts Payable" : "Accounts Receivable",
                     " settings \u2014 unchanged, not part of this prototype.")) : !connected && requestedProvider ? (React.createElement("div", { style: { maxWidth: 620 } },
@@ -541,9 +529,9 @@ function IntegrationHubPrototype() {
                     React.createElement("label", { style: { display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 } }, "Select your TMS provider"),
                     React.createElement("select", { value: pendingProvider, onChange: (e) => handleProviderChange(e.target.value), style: { width: "100%", maxWidth: 380, padding: "11px 12px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 13.5, color: "#374151", marginBottom: 14, background: "#fff", display: "block" } },
                         React.createElement("option", { value: "" }, "Choose a provider\u2026"),
-                        PARTNERS.map((p) => (React.createElement("option", { key: p, value: p }, p))),
+                        PARTNERS.filter((p) => !isBespoke(p)).map((p) => (React.createElement("option", { key: p, value: p }, p))),
                         React.createElement("option", { value: OTHER_TMS_VALUE }, "Other TMS provider\u2026")),
-                    React.createElement(PrimaryBtn, { disabled: !pendingProvider, onClick: () => startConnect(pendingProvider) }, "Get started"),
+                    React.createElement(PrimaryBtn, { disabled: !pendingProvider, onClick: () => setConnectConfirmProvider(pendingProvider) }, "Get started"),
                     React.createElement("div", { style: { marginTop: 20, marginBottom: 34 } },
                         React.createElement("button", { onClick: () => setRequestOpen(true), style: { background: "none", border: "none", color: "#2563EB", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, padding: 0 } },
                             "Can't find your TMS? ",
@@ -565,7 +553,7 @@ function IntegrationHubPrototype() {
                     React.createElement("div", { style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20 } },
                         React.createElement("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, minWidth: 0 } },
                             React.createElement("span", { style: { fontSize: 20, fontWeight: 700, color: "#1F2937" } }, providerKnown ? `Integration with ${selectedProvider}` : "Confirm your TMS provider"),
-                            providerKnown && !notApproved && (React.createElement("span", { style: {
+                            providerKnown && (React.createElement("span", { style: {
                                     display: "inline-flex",
                                     alignItems: "center",
                                     gap: 5,
@@ -573,45 +561,17 @@ function IntegrationHubPrototype() {
                                     fontWeight: 700,
                                     padding: "2px 8px",
                                     borderRadius: 999,
-                                    color: needsKey ? "#4B5563" : live ? "#15803D" : "#B45309",
-                                    background: needsKey ? "#F3F4F6" : live ? "#F0FDF4" : "#FFFBEB",
-                                    border: `1px solid ${needsKey ? "#E5E7EB" : live ? "#BBF7D0" : "#FDE68A"}`,
+                                    color: live ? "#15803D" : "#B45309",
+                                    background: live ? "#F0FDF4" : "#FFFBEB",
+                                    border: `1px solid ${live ? "#BBF7D0" : "#FDE68A"}`,
                                 } },
-                                React.createElement("span", { style: { width: 6, height: 6, borderRadius: 999, background: needsKey ? "#9CA3AF" : live ? "#16A34A" : "#D97706" } }),
-                                needsKey ? "Not set up" : live ? "Live" : "Pending"))),
+                                React.createElement("span", { style: { width: 6, height: 6, borderRadius: 999, background: live ? "#16A34A" : "#D97706" } }),
+                                live ? "Live" : "Pending"))),
                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, flexShrink: 0, whiteSpace: "nowrap", paddingTop: 6 } },
-                            providerKnown && !needsKey && !notApproved && (React.createElement("button", { onClick: () => { setSwitchInitialPick(""); setSwitchOpen(true); }, style: { background: "none", border: "none", color: "#9CA3AF", fontSize: 12, fontWeight: 500, cursor: "pointer", textDecoration: "underline", padding: 0 } }, "Switch provider")),
-                            !notApproved && (React.createElement("button", { onClick: () => setDisconnectOpen(true), style: { background: "none", border: "none", color: "#9CA3AF", fontSize: 12, fontWeight: 500, cursor: "pointer", textDecoration: "underline", padding: 0 } }, "Disconnect")))),
+                            providerKnown && (React.createElement("button", { onClick: () => { setSwitchInitialPick(""); setSwitchOpen(true); }, style: { background: "none", border: "none", color: "#9CA3AF", fontSize: 12, fontWeight: 500, cursor: "pointer", textDecoration: "underline", padding: 0 } }, "Switch provider")),
+                            (React.createElement("button", { onClick: () => setDisconnectOpen(true), style: { background: "none", border: "none", color: "#9CA3AF", fontSize: 12, fontWeight: 500, cursor: "pointer", textDecoration: "underline", padding: 0 } }, "Disconnect")))),
                     React.createElement("p", { style: { fontSize: 13.5, color: "#6B7280", margin: "-14px 0 24px", lineHeight: 1.5 } }, "Post loads, receive updates, and manage documents seamlessly."),
-                    notApproved && (React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 14px", marginBottom: 24 } },
-                        React.createElement(AlertTriangle, { size: 17, color: "#D97706", style: { marginTop: 1 } }),
-                        React.createElement("div", { style: { flex: 1 } },
-                            React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "#1F2937" } }, bespoke ? "This bespoke integration needs approval" : "We can't find an API key for your account"),
-                            React.createElement("p", { style: { fontSize: 13, color: "#4B5563", margin: "3px 0 12px", lineHeight: 1.5 } },
-                                "We can't find an approved integration with ",
-                                providerShortName,
-                                " on your account. Request approval and we'll be in touch by email."),
-                            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" } },
-                                React.createElement(PrimaryBtn, { onClick: () => setApprovalRequestOpen(true) }, "Request approval"),
-                                React.createElement("button", { onClick: () => {
-                                        setPendingProvider("");
-                                        setUnknownPick("");
-                                        if (flow === "integrated") {
-                                            setSelectedProvider(UNKNOWN_PROVIDER);
-                                        }
-                                        else {
-                                            setConnected(false);
-                                            setSelectedProvider("");
-                                            setApiKey("");
-                                        }
-                                    }, style: { background: "none", border: "none", padding: 0, color: "#2563EB", fontSize: 12.5, fontWeight: 600, cursor: "pointer" } }, "Choose a different provider"))))),
-                    needsKey && (React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 14px", marginBottom: 24 } },
-                        React.createElement(AlertTriangle, { size: 17, color: "#D97706", style: { marginTop: 1 } }),
-                        React.createElement("div", { style: { flex: 1 } },
-                            React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "#1F2937" } }, "Generate an API key to finish setting up"),
-                            React.createElement("p", { style: { fontSize: 13, color: "#4B5563", margin: "3px 0 12px", lineHeight: 1.5 } }, "Your integration can't go live until you've generated a key and added it to your TMS."),
-                            React.createElement(PrimaryBtn, { onClick: () => sendKey(selectedProvider, false) }, "Generate API key")))),
-                    !live && providerKnown && !needsKey && !notApproved && (React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "12px 14px", marginBottom: 24 } },
+                    !live && providerKnown && (React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "12px 14px", marginBottom: 24 } },
                         React.createElement(CheckCircle2, { size: 17, color: "#16A34A", style: { marginTop: 1 } }),
                         React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                             React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "#1F2937" } }, isBespoke(selectedProvider)
@@ -630,13 +590,13 @@ function IntegrationHubPrototype() {
                             PARTNERS.map((p) => (React.createElement("option", { key: p, value: p }, p))),
                             React.createElement("option", { value: NOT_LISTED_VALUE }, "My TMS provider isn't listed")),
                         React.createElement(PrimaryBtn, { disabled: !unknownPick, onClick: () => setConfirmProviderPick(unknownPick) }, "Confirm"))),
-                    providerKnown && bespoke && apiKey && !notApproved && React.createElement(KeyPanel, { key: apiKey, apiKey: apiKey }),
-                    providerKnown && !needsKey && !notApproved && (React.createElement("div", { style: { marginBottom: 8, display: "flex", gap: 8, flexWrap: "wrap" } },
+                    providerKnown && bespoke && apiKey && React.createElement(KeyPanel, { key: apiKey, apiKey: apiKey }),
+                    providerKnown && (React.createElement("div", { style: { marginBottom: 8, display: "flex", gap: 8, flexWrap: "wrap" } },
                         React.createElement(GhostBtn, { icon: React.createElement(RefreshCw, { size: 13 }), onClick: () => setResendOpen(true) }, isBespoke(selectedProvider) ? "Regenerate API key" : "Resend API key"))),
                     React.createElement(HelpResources, null))))),
         React.createElement(NewIntegrationRequestModal, { open: requestOpen, onClose: () => setRequestOpen(false), onSubmitted: (name) => setRequestedProvider(name), onSelectExisting: (name) => {
                 setRequestOpen(false);
-                startConnect(name);
+                setConnectConfirmProvider(name);
             } }),
         React.createElement(ConfirmModal, { open: !!connectConfirmProvider, tone: "neutral", title: `Integrate with ${connectConfirmProvider}`, body: isBespoke(connectConfirmProvider)
                 ? "We'll generate an API key here for you to add to your TMS. You'll only see it once, so have somewhere safe to store it."
@@ -660,19 +620,14 @@ function IntegrationHubPrototype() {
                 setLive(false);
                 setFlow("new");
             } }),
-        React.createElement(NewIntegrationRequestModal, { open: notListedOpen, title: "My TMS provider isn't listed", askReason: false, successTitle: "Request submitted", successMessage: (name) => `We've received your request to add ${name} to our list of TMS providers.`, onClose: () => setNotListedOpen(false), onSelectExisting: (name) => {
+        React.createElement(NewIntegrationRequestModal, { open: notListedOpen, title: "My TMS provider isn't listed", askReason: false, successTitle: "Request submitted", successMessage: (name) => `We've received your request to add ${name} to our list of TMS providers.`, submitLabel: "Confirm", onDirectSubmit: (name, type) => {
+                /* API key already detected: just record the TMS details, no ticket */
+                setNotListedOpen(false);
+                setSelectedProvider(type === "bespoke" ? `${name} (Bespoke)` : name);
+                setUnknownPick("");
+            }, onClose: () => setNotListedOpen(false), onSelectExisting: (name) => {
                 setNotListedOpen(false);
                 setConfirmProviderPick(name);
-            } }),
-        React.createElement(NewIntegrationRequestModal, { open: approvalRequestOpen, title: bespoke ? "Request bespoke integration approval" : "Request integration approval", initialName: providerShortName, initialType: bespoke ? "bespoke" : "third-party", successTitle: "Approval request submitted", successMessage: (name) => `We've received your request to approve your integration with ${name}.`, onClose: () => setApprovalRequestOpen(false), onSubmitted: (name) => {
-                setConnected(false);
-                setSelectedProvider("");
-                setApiKey("");
-                setLive(false);
-                setRequestedProvider(name);
-            }, onSelectExisting: (name) => {
-                setApprovalRequestOpen(false);
-                startConnect(name);
             } }),
         React.createElement(SwitchProviderModal, { open: switchOpen, currentProvider: selectedProvider, initialPick: switchInitialPick, onCancel: () => setSwitchOpen(false), onNotListed: () => { setSwitchOpen(false); setSwitchRequestOpen(true); }, onConfirm: handleSwitch }),
         React.createElement(NewIntegrationRequestModal, { open: switchRequestOpen, title: "My new TMS provider isn't listed", askReason: false, successTitle: "Request submitted", successMessage: (name) => `We've received your request to add ${name} to our list of TMS providers. Your current integration isn't affected.`, onClose: () => setSwitchRequestOpen(false), onSelectExisting: (name) => {
