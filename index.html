@@ -1,15 +1,15 @@
 <!doctype html>
 <!--
-  Integration Hub: TMS prototype (v23)
+  Integration Hub: TMS prototype (v24)
   One file, readable source. React and Babel load from a CDN, so it needs an internet connection.
-  Open it in a browser, or host it as-is (for example GitHub Pages: save as index.html).
+  Open it in a browser, or host it as-is (for example Vercel or GitHub Pages: save as index.html).
   The prototype code starts at the <script type="text/babel"> tag below.
 -->
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Integration Hub: TMS prototype v23</title>
+<title>Integration Hub: TMS prototype v24</title>
 <style>
   html, body { margin: 0; padding: 0; }
   body { background: #fff; }
@@ -512,12 +512,14 @@ function StatusLine({ hub }) {
   );
 }
 
-function PendingBanner({ hub }) {
+function PendingBanner({ hub, basicAuth }) {
   const p = hub.provider, prev = hub.previousProvider;
   if (hub.pendingKind === "request")
     return <Banner title={`Request submitted for ${p}`}>We{"\u2019"}ve received your request to add {p}. We{"\u2019"}ll email you once we{"\u2019"}ve reviewed it. If it{"\u2019"}s approved, you can then connect to {p}.</Banner>;
   if (hub.pendingKind === "first")
     return <Banner title={`Secure link sent to ${p}`}>We{"\u2019"}ve emailed {p} a secure link to your API key. Your integration will show as active once they{"\u2019"}ve added it and we receive their first request.</Banner>;
+  if (hub.pendingKind === "reset" && basicAuth)
+    return <Banner title={`New API key link sent to ${p}`}>We{"\u2019"}ve emailed {p} a secure link to your new API key. Your current connection keeps working until {p} starts using the new key.</Banner>;
   if (hub.pendingKind === "reset")
     return <Banner title={`New API key link sent to ${p}`}>We{"\u2019"}ve emailed {p} a secure link to your new API key. Your current key keeps working until {p} starts using the new one, then it{"\u2019"}s replaced.</Banner>;
   if (hub.pendingKind === "switch")
@@ -855,7 +857,7 @@ function App() {
                     </div>
                   </div>
                   <div style={{ margin: "2px 0 18px" }}><StatusLine hub={hub} /></div>
-                  {hub.status === "pending" && <PendingBanner hub={hub} />}
+                  {hub.status === "pending" && <PendingBanner hub={hub} basicAuth={detected === "basic"} />}
                   {availableBanner}
                   {reqBanner}
                   <Btn icon={<RefreshCw size={13} />} onClick={() => openModal({ type: "reset" })}>Regenerate API key</Btn>
