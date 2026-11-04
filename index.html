@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Integration Hub: TMS prototype (v24)
+  Integration Hub: TMS prototype (v25)
   One file, readable source. React and Babel load from a CDN, so it needs an internet connection.
   Open it in a browser, or host it as-is (for example Vercel or GitHub Pages: save as index.html).
   The prototype code starts at the <script type="text/babel"> tag below.
@@ -9,7 +9,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Integration Hub: TMS prototype v24</title>
+<title>Integration Hub: TMS prototype v25</title>
 <style>
   html, body { margin: 0; padding: 0; }
   body { background: #fff; }
@@ -329,6 +329,20 @@ function MfaModal({ method, onCancel, onVerified, onFailed, busy, error }) {
   );
 }
 
+function NoTwoFaModal({ onClose }) {
+  return (
+    <Modal title="2FA required" onClose={onClose}
+      icon={<IconCircle tone="info"><ShieldCheck size={17} color="#2563EB" /></IconCircle>}
+      footer={<Primary onClick={onClose}>Okay</Primary>}>
+      <p style={bodyText}>Connecting a TMS, regenerating a key, switching provider and disconnecting need two-factor authentication. Set up 2FA on the TEG platform, then try again.</p>
+      <p style={{ margin: "10px 0 0", fontSize: 12 }}>
+        <a href={TWOFA_HELP_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#2563EB" }}>Learn more about 2FA on the TEG platform here.</a>
+      </p>
+      <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "#9CA3AF" }}>(Prototype: proposed wording, pending decision OQ-36.)</p>
+    </Modal>
+  );
+}
+
 function SwitchModal({ current, options, preselect, requestBlocked, onCancel, onSend, onNotListed, busy, error }) {
   const [sel, setSel] = useState(preselect || "");
   const [ok, setOk] = useState(false);
@@ -545,6 +559,7 @@ function App() {
   const [toast, setToast] = useState("");
   // A3
   const [failNext, setFailNext] = useState(false);
+  const [noTwoFa, setNoTwoFa] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const failRef = useRef(false);
@@ -594,7 +609,7 @@ function App() {
     openModal(upgradeSent ? { type: "upgrade-sent", repeat: true } : { type: "upgrade", provider: p });
     return false;
   }
-  function askMfa(label, next) { openModal({ type: "mfa", actionLabel: label, next }); }
+  function askMfa(label, next) { openModal(noTwoFa ? { type: "no2fa" } : { type: "mfa", actionLabel: label, next }); }
 
   /* ----- actions (A1: every email the PRD lists is logged with its EM/IN code) ----- */
 
@@ -872,7 +887,7 @@ function App() {
 
       {/* pop-ups */}
       {modal?.type === "integrate" && (
-        <IntegrateModal provider={modal.provider} {...sharedUi} onCancel={() => openModal(null)} onConfirm={() => run(() => doGetStarted(modal.provider))} />
+        <IntegrateModal provider={modal.provider} {...sharedUi} onCancel={() => openModal(null)} onConfirm={() => askMfa("Connecting", () => doGetStarted(modal.provider))} />
       )}
       {modal?.type === "confirm-provider" && (
         <ConfirmProviderModal provider={modal.provider} {...sharedUi} onCancel={() => openModal(null)} onConfirm={() => run(() => doConfirmProvider(modal.provider))} />
@@ -888,6 +903,7 @@ function App() {
           onCancel={() => openModal(null)} onNotListed={() => openModal({ type: "request", variant: "switch" })}
           onSend={(p) => askMfa("Switching provider", () => doSwitch(p))} />
       )}
+      {modal?.type === "no2fa" && <NoTwoFaModal onClose={() => openModal(null)} />}
       {modal?.type === "mfa" && (
         <MfaModal method={mfaMethod} {...sharedUi} onCancel={() => openModal(null)} onFailed={() => addLog("record", "2FA failed (nothing changed)")}
           onVerified={() => run(() => { addLog("record", "2FA passed"); const next = modal.next; openModal(null); next(); })} />
@@ -953,6 +969,10 @@ function App() {
               </label>
             ))}
             <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Simulate</div>
+            <label style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={noTwoFa} onChange={(e) => setNoTwoFa(e.target.checked)} style={{ accentColor: "#111827" }} />
+              User has no 2FA enrolled (proposed, OQ-36)
+            </label>
             <label style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 8, cursor: "pointer" }}>
               <input type="checkbox" checked={failNext} onChange={(e) => setFailNext(e.target.checked)} style={{ accentColor: "#111827" }} />
               Next action fails (shows the error pop-up state)
